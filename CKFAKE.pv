@@ -1,0 +1,289 @@
+(* Define various channels *)
+free V_TA_secure_net : channel[private].
+free FN_TA_secure_net : channel[private].
+free V_FN_public_net : channel.
+free FN_TA_public_net : channel.
+(* Define public and private keys *)
+type PublicKey.
+type PrivateKey.
+type SPublicKey.
+type SPrivateKey.
+(* Defining entities *)
+type Participant.
+free TA, FN, Veh : Participant.
+(* TA params *)
+(* TA encrypt private key *)
+free sk_TA : PrivateKey[private].
+(* TA sign private key *)
+free ssk_TA : SPrivateKey[private].
+(* The session key between TA and FN *)
+free SKTA_FN : bitstring[private].
+(* The session key between TA and V *)
+free SKTA_V : bitstring[private].
+
+(* FN params *)
+(* FN node ID *)
+free Fid : bitstring.
+(* FN节点签名私钥 *)
+free ssk_FN : SPrivateKey.
+(* The FN node signs the private key *)
+free SKFN_TA : bitstring[private].
+(* The FN node talks key with the vehicle *)
+free SKFN_V : bitstring[private].
+
+(* V params *)
+(* Vehicle ID *)
+free id_i : bitstring[private].
+(* OBU login password *)
+free pw_i : bitstring[private].
+(* Biometric information *)
+free bio_i : bitstring[private].
+(* The vehicle and TA session key *)
+free SKV_TA : bitstring[private].
+(* The vehicle talks with the FN node about the key *)
+free SKV_FN : bitstring[private].
+
+(* Function *)
+(* Kyber encryption definition *)
+fun KyberEnc2(bitstring, bitstring, PublicKey) : bitstring.
+fun KyberEnc3(bitstring, bitstring, bitstring, PublicKey) : bitstring.
+fun KyberEnc4(bitstring, bitstring, bitstring, bitstring, PublicKey) : bitstring.
+(* Definition of Falcon signature *)
+fun FalconSign(bitstring, SPrivateKey) : bitstring.
+fun FalconSign2(bitstring, bitstring, SPrivateKey) : bitstring.
+(* Xor function definition *)
+fun XORFun(bitstring, bitstring) : bitstring.
+(* Biohashing function definition *)
+fun Biohashing(bitstring) : bitstring.
+
+(* Hash Funtions *)
+fun Hash_1Three(PrivateKey, bitstring, bitstring) : bitstring.
+fun Hash_1Four(bitstring, bitstring, bitstring, bitstring) : bitstring.
+fun Hash_2Two(bitstring, bitstring) :bitstring.
+fun Hash_2Three(bitstring, bitstring, bitstring) : bitstring.
+fun Hash_2Four(bitstring, PrivateKey, bitstring ,SPrivateKey) : bitstring.
+fun Hash_2Four2(bitstring, bitstring, bitstring ,bitstring) : bitstring.
+fun Hash_3Three(bitstring, bitstring, bitstring) : bitstring.
+fun Hash_3Four(bitstring, bitstring, bitstring, bitstring) : bitstring.
+fun Hash_4Two(bitstring, bitstring) : bitstring.
+fun CuckooHash(bitstring) : bitstring.
+
+(* Destructors *)
+fun GenPk(PrivateKey) : PublicKey.
+reduc forall m1 : bitstring, m2 : bitstring, sk : PrivateKey;
+KyberDec2(KyberEnc2(m1, m2, GenPk(sk)), sk) = (m1, m2).
+reduc forall m1 : bitstring, m2 : bitstring, m3 : bitstring, sk : PrivateKey;
+KyberDec3(KyberEnc3(m1, m2, m3, GenPk(sk)), sk) = (m1, m2, m3).
+reduc forall m1 : bitstring, m2 : bitstring, m3 : bitstring, m4 : bitstring, sk : PrivateKey;
+KyberDec4(KyberEnc4(m1, m2, m3, m4, GenPk(sk)), sk) = (m1, m2, m3, m4).
+
+fun GenSPk(SPrivateKey) : SPublicKey.
+reduc forall m1 : bitstring, ssk : SPrivateKey;
+FalconVer(FalconSign(m1, ssk), GenSPk(ssk)) = m1.
+reduc forall m1 : bitstring, m2 : bitstring, ssk : SPrivateKey;
+FalconVer2(FalconSign2(m1, m2, ssk), GenSPk(ssk)) = (m1, m2).
+
+reduc forall m1 : bitstring, m2 : bitstring;
+DXORFun(XORFun(m1, m2), m1) = m2.
+
+table FNList(bitstring, PublicKey, bitstring).
+table VehicleList(bitstring, PublicKey, SPublicKey).
+table CuckooFilter(bitstring, bitstring).
+
+
+(* Events *)
+event VFNstart(Participant).
+event VFNend(Participant).
+event FNVstart(Participant).
+event FNVend(Participant).
+event FNTAstart(Participant).
+event FNTAend(Participant).
+event TAFNstart(Participant).
+event TAFNend(Participant).
+
+
+(* Verify ID security *)
+query attacker(id_i).
+(* Verify password security *)
+weaksecret pw_i.
+(* Verify the session key security *)
+query attacker(SKV_FN).
+query attacker(SKV_TA).
+query attacker(SKFN_TA).
+query attacker(SKFN_V).
+query attacker(SKTA_FN).
+query attacker(SKTA_V).
+query t : Participant;
+inj-event(VFNend(t)) ==> inj-event(VFNstart(t)).
+query t : Participant;
+inj-event(FNVend(t)) ==> inj-event(FNVstart(t)).
+query t : Participant;
+inj-event(FNTAend(t)) ==> inj-event(FNTAstart(t)).
+query t : Participant;
+inj-event(TAFNend(t)) ==> inj-event(TAFNstart(t)).
+
+(* TA process *)
+let pTA(sk_TA : PrivateKey, ssk_TA : SPrivateKey) = 
+(* FN Registration process *)
+(* Receive registration information *)
+in(FN_TA_secure_net, (Fidx : bitstring));
+(* Generate random numbers, secret parameters, and FN keys *)
+new rj_TA : bitstring;
+let sj = Hash_1Three(sk_TA, Fidx, rj_TA) in
+new sk_FN : PrivateKey;
+let pk_FN = GenPk(sk_FN) in
+insert FNList(Fidx, pk_FN, sj);
+(* Return the registration response to the FN *)
+out(FN_TA_secure_net, (sj, pk_FN, sk_FN));
+
+(* Vehicle Registration process *)
+(* Receive vehicle registration information *)
+in(V_TA_secure_net, (id_ix : bitstring, RPWix : bitstring));
+(* Generate vehicle encryption and signing key pairs and related parameters *)
+new ri_TA : bitstring;
+let pid_i = Hash_1Three(sk_TA, id_ix, ri_TA) in
+new ssk_V : SPrivateKey;
+let spk_V = GenSPk(ssk_V) in
+new sk_V : PrivateKey;
+let pk_V = GenPk(sk_V) in
+let x_i = Hash_2Four(id_ix, sk_TA, ri_TA, ssk_V) in
+let y_i = XORFun(x_i, RPWix) in
+let TC_i = Hash_2Two(y_i, id_ix) in
+let V_i = Hash_2Two(TC_i, RPWix) in
+let hpid_i = CuckooHash(pid_i) in
+(* Insert the anonymous identity into the filter *)
+insert CuckooFilter(hpid_i, pid_i);
+(* Save the vehicle encryption and signature public key *)
+insert VehicleList(hpid_i, pk_V, spk_V);
+(* Returns the vehicle registration response *)
+out(V_TA_secure_net, (pid_i, y_i, V_i, pk_V, sk_V, spk_V, ssk_V));
+
+(* Vehicle Certification process *)
+(* TA receives the authentication information forwarded by the FN node *)
+in(FN_TA_public_net, (pid_ix : bitstring, Xx : bitstring, Fid_ : bitstring, Ver2_ : bitstring));
+event TAFNstart(FN);
+(* Obtain the FN node secret parameters *)
+get FNList(=Fid_, pk_FNx, sjx) in
+(* Verifying message integrity *)
+let Ver2x = Hash_2Four2(pid_ix, Xx, Fid_, sjx) in
+if (Ver2_ = Ver2x) then
+(* Get anonymous identity from the anonymous identity filter *)
+let hpid_ix = CuckooHash(pid_ix) in
+get CuckooFilter(=hpid_ix, xpid_i) in
+get VehicleList(=hpid_ix, xpk_V, xspk_V) in
+(* Verify anonymous identity validity *)
+if (pid_ix = xpid_i) then
+(* Generate session key related parameters *)
+let (rvx : bitstring, signVx : bitstring) = KyberDec2(Xx, sk_TA) in
+let rv_ = FalconVer(signVx, xspk_V) in
+if (rv_ = rvx) then
+new rTA : bitstring;
+new rFN : bitstring;
+let VTA = XORFun(rvx, rTA) in
+(* Generate the signature and return it *)
+let signRR = FalconSign2(VTA, rFN, ssk_TA) in
+let Y = KyberEnc4(VTA, rFN, signVx, signRR, pk_FNx) in
+let Z = KyberEnc3(VTA, rFN, signRR, xpk_V) in
+(* Generating session keys *)
+let SKTA_FN = Hash_3Three(rFN, sjx, Fid_) in
+let SKTA_V = Hash_3Three(rTA, rvx, pid_ix) in
+let Ver3 = Hash_2Three(Y, Z, signRR) in
+(* The TA responds to the FN authentication request *)
+event FNTAend(TA);
+out(FN_TA_public_net, (Y, Z, Ver3));
+in(FN_TA_public_net, (RES2 : bitstring));
+let YRES = Hash_4Two(SKV_TA, pid_ix) in
+if(YRES = RES2) then
+0.
+
+(* FN process *)
+let pFN(pk_TA : PublicKey, spk_TA : SPublicKey) = 
+(* The FN initiates the registration request *)
+out(FN_TA_secure_net, Fid);
+in(FN_TA_secure_net, (sj_ : bitstring, pk_FN_ : PublicKey, sk_FN_ : PrivateKey));
+(* The FN publishes the Fid *)
+out(V_FN_public_net, Fid);
+(* The FN receives the authentication request *)
+in(V_FN_public_net, (pid_i__ : bitstring, X_ : bitstring, signV_ : bitstring, Ver1_ : bitstring));
+event FNVstart(Veh);
+let Ver1x = Hash_2Three(pid_i__, X_, signV_) in
+if (Ver1_ = Ver1x) then
+let Ver2 = Hash_2Four2(pid_i__, X_, Fid, sj_) in
+(* The FN forwards the authentication message *)
+event FNTAstart(TA); 
+out(FN_TA_public_net, (pid_i__, X_, Fid, Ver2));
+in(FN_TA_public_net, (Y_ : bitstring, Z_ : bitstring, Ver3_ : bitstring));
+let (VTA_ : bitstring, rFN_ : bitstring, signV_x : bitstring, signRR_ : bitstring) = KyberDec4(Y_, sk_FN_) in
+let Ver3x = Hash_2Three(Y_, Z_, signRR_) in
+if (Ver3_ = Ver3x) then
+if (signV_ = signV_x) then
+event TAFNend(FN);
+let (VTA : bitstring, rFN : bitstring) = FalconVer2(signRR_, spk_TA) in
+if (VTA = VTA_) then
+if (rFN = rFN_) then
+let SKFN_TA = Hash_3Three(rFN_, sj_, Fid) in
+let SKFN_V = Hash_3Four(VTA, rFN_, pid_i__, Fid) in
+let Ver4 = Hash_2Two(Z_, signRR_) in
+(* The FN responds to the vehicle authentication request *)
+event VFNend(FN);
+out(V_FN_public_net, (Z_, Ver4));
+(* The FN receives the vehicle response *)
+in(V_FN_public_net, (RES1 : bitstring, RES2 : bitstring));
+let XRES = Hash_4Two(RES1, pid_i__) in
+if (RES1 = XRES) then
+out(FN_TA_public_net, RES2);
+0.
+
+(* Vehicle process *)
+let pV(pk_TA : PublicKey, spk_TA : SPublicKey) = 
+let bi = Biohashing(bio_i) in
+new rni : bitstring;
+let RPWi = Hash_1Four(id_i, pw_i, bi, rni) in
+(* The vehicle initiates a registration request *)
+out(V_TA_secure_net, (id_i, RPWi));
+in(V_TA_secure_net, (pid_i_ : bitstring, y_i_ : bitstring, V_i_ : bitstring, pk_V_ : PublicKey, sk_V_ : PrivateKey, spk_V_ : SPublicKey, ssk_V_ : SPrivateKey));
+let x_i_ = DXORFun(y_i_, RPWi) in
+new rni_new : bitstring;
+let RPWi_new = Hash_1Four(id_i, pw_i, bi, rni_new) in
+let y_i_new = XORFun(RPWi_new, x_i_) in
+let TC_i_new = Hash_2Two(y_i_new, RPWi_new) in
+let V_i_new = Hash_2Two(TC_i_new, RPWi_new) in
+
+(* Authentication *)
+in(V_FN_public_net, Fid : bitstring);
+let bi_ = Biohashing(bio_i) in
+let RPWi_ = Hash_1Four(id_i, pw_i, bi_, rni_new) in
+let y_ix = DXORFun(x_i_, RPWi_new) in
+let TC_ix = Hash_2Two(y_ix, id_i) in
+let V_ix = Hash_2Two(TC_ix, RPWi_) in
+if (V_ix = V_i_new) then
+new rv : bitstring;
+let signV = FalconSign(rv, ssk_V_) in
+let X = KyberEnc2(rv, signV, pk_TA) in
+let Ver1 = Hash_2Three(pid_i_, X, signV) in
+(* The vehicle initiates an authentication request *)
+event VFNstart(FN);
+out(V_FN_public_net, (pid_i_, X, signV, Ver1));
+in(V_FN_public_net, (Z_ : bitstring, Ver4 : bitstring));
+let (VTA : bitstring, rFN : bitstring, signRR : bitstring) = KyberDec3(Z_, sk_V_) in
+let Ver4x = Hash_2Two(Z_, signRR) in
+if (Ver4 = Ver4x) then
+let (VTA_ : bitstring, rFN_ : bitstring) = FalconVer2(signRR, spk_TA) in
+if (VTA = VTA_) then
+if (rFN = rFN_) then
+let SKV_FN = Hash_3Four(VTA, rFN, pid_i_, Fid) in
+let rTA = DXORFun(VTA, rv) in
+let SKV_TA = Hash_3Three(rTA, rv, pid_i_) in
+let RES1 = Hash_4Two(SKV_FN, pid_i_) in
+let RES2 = Hash_4Two(SKV_TA, pid_i_) in
+(* Vehicle response FN *)
+event FNVend(Veh);
+out(V_FN_public_net, (RES1, RES2));
+0.
+
+process
+new sk_TA : PrivateKey;
+new ssk_TA : SPrivateKey;
+let pk_TA = GenPk(sk_TA) in
+let spk_TA = GenSPk(ssk_TA) in
+(pTA(sk_TA, ssk_TA)|(!pFN(pk_TA, spk_TA))|(!pV(pk_TA, spk_TA)))
