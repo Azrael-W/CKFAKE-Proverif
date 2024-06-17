@@ -1,6 +1,4 @@
 (* Define various channels *)
-free V_TA_secure_net : channel[private].
-free FN_TA_secure_net : channel[private].
 free V_FN_public_net : channel.
 free FN_TA_public_net : channel.
 (* Define public and private keys *)
@@ -124,39 +122,6 @@ inj-event(TAFNend(t)) ==> inj-event(TAFNstart(t)).
 
 (* TA process *)
 let pTA(sk_TA : PrivateKey, ssk_TA : SPrivateKey) = 
-(* FN Registration process *)
-(* Receive registration information *)
-in(FN_TA_secure_net, (Fidx : bitstring));
-(* Generate random numbers, secret parameters, and FN keys *)
-new rj_TA : bitstring;
-let sj = Hash_1Three(sk_TA, Fidx, rj_TA) in
-new sk_FN : PrivateKey;
-let pk_FN = GenPk(sk_FN) in
-insert FNList(Fidx, pk_FN, sj);
-(* Return the registration response to the FN *)
-out(FN_TA_secure_net, (sj, pk_FN, sk_FN));
-
-(* Vehicle Registration process *)
-(* Receive vehicle registration information *)
-in(V_TA_secure_net, (id_ix : bitstring, RPWix : bitstring));
-(* Generate vehicle encryption and signing key pairs and related parameters *)
-new ri_TA : bitstring;
-let pid_i = Hash_1Three(sk_TA, id_ix, ri_TA) in
-new ssk_V : SPrivateKey;
-let spk_V = GenSPk(ssk_V) in
-new sk_V : PrivateKey;
-let pk_V = GenPk(sk_V) in
-let x_i = Hash_2Four(id_ix, sk_TA, ri_TA, ssk_V) in
-let y_i = XORFun(x_i, RPWix) in
-let TC_i = Hash_2Two(y_i, id_ix) in
-let V_i = Hash_2Two(TC_i, RPWix) in
-let hpid_i = CuckooHash(pid_i) in
-(* Insert the anonymous identity into the filter *)
-insert CuckooFilter(hpid_i, pid_i);
-(* Save the vehicle encryption and signature public key *)
-insert VehicleList(hpid_i, pk_V, spk_V);
-(* Returns the vehicle registration response *)
-out(V_TA_secure_net, (pid_i, y_i, V_i, pk_V, sk_V, spk_V, ssk_V));
 
 (* Vehicle Certification process *)
 (* TA receives the authentication information forwarded by the FN node *)
@@ -197,12 +162,8 @@ if(YRES = RES2) then
 0.
 
 (* FN process *)
-let pFN(pk_TA : PublicKey, spk_TA : SPublicKey) = 
-(* The FN initiates the registration request *)
-out(FN_TA_secure_net, Fid);
-in(FN_TA_secure_net, (sj_ : bitstring, pk_FN_ : PublicKey, sk_FN_ : PrivateKey));
-(* The FN publishes the Fid *)
-out(V_FN_public_net, Fid);
+let pFN(pk_TA : PublicKey, spk_TA : SPublicKey, sj_ : bitstring, pk_FN_ : PublicKey, sk_FN_ : PrivateKey) = 
+
 (* The FN receives the authentication request *)
 in(V_FN_public_net, (pid_i__ : bitstring, X_ : bitstring, signV_ : bitstring, Ver1_ : bitstring));
 event FNVstart(Veh);
@@ -235,13 +196,8 @@ out(FN_TA_public_net, RES2);
 0.
 
 (* Vehicle process *)
-let pV(pk_TA : PublicKey, spk_TA : SPublicKey) = 
-let bi = Biohashing(bio_i) in
-new rni : bitstring;
-let RPWi = Hash_1Four(id_i, pw_i, bi, rni) in
-(* The vehicle initiates a registration request *)
-out(V_TA_secure_net, (id_i, RPWi));
-in(V_TA_secure_net, (pid_i_ : bitstring, y_i_ : bitstring, V_i_ : bitstring, pk_V_ : PublicKey, sk_V_ : PrivateKey, spk_V_ : SPublicKey, ssk_V_ : SPrivateKey));
+let pV(pk_TA : PublicKey, spk_TA : SPublicKey, pid_i_ : bitstring, y_i_ : bitstring, V_i_ : bitstring, pk_V_ : PublicKey, sk_V_ : PrivateKey, spk_V_ : SPublicKey, ssk_V_ : SPrivateKey, RPWi : bitstring, bi : bitstring, Fid : bitstring) = 
+
 let x_i_ = DXORFun(y_i_, RPWi) in
 new rni_new : bitstring;
 let RPWi_new = Hash_1Four(id_i, pw_i, bi, rni_new) in
@@ -250,7 +206,6 @@ let TC_i_new = Hash_2Two(y_i_new, RPWi_new) in
 let V_i_new = Hash_2Two(TC_i_new, RPWi_new) in
 
 (* Authentication *)
-in(V_FN_public_net, Fid : bitstring);
 let bi_ = Biohashing(bio_i) in
 let RPWi_ = Hash_1Four(id_i, pw_i, bi_, rni_new) in
 let y_ix = DXORFun(x_i_, RPWi_new) in
@@ -282,8 +237,37 @@ out(V_FN_public_net, (RES1, RES2));
 0.
 
 process
-new sk_TA : PrivateKey;
-new ssk_TA : SPrivateKey;
-let pk_TA = GenPk(sk_TA) in
-let spk_TA = GenSPk(ssk_TA) in
-(pTA(sk_TA, ssk_TA)|(!pFN(pk_TA, spk_TA))|(!pV(pk_TA, spk_TA)))
+  new sk_TA : PrivateKey;
+  new ssk_TA : SPrivateKey;
+  let pk_TA = GenPk(sk_TA) in
+  let spk_TA = GenSPk(ssk_TA) in
+  (* FN Registration process *)
+  (* Generate random numbers, secret parameters, and FN keys *)
+  new rj_TA : bitstring;
+  let sj = Hash_1Three(sk_TA, Fid, rj_TA) in
+  new sk_FN : PrivateKey;
+  let pk_FN = GenPk(sk_FN) in
+  insert FNList(Fid, pk_FN, sj);
+
+  (* Vehicle Registration *)
+  let bi = Biohashing(bio_i) in
+  new rni : bitstring;
+  let RPWi = Hash_1Four(id_i, pw_i, bi, rni) in
+  (* Generate vehicle encryption and signing key pairs and related parameters *)
+  new ri_TA : bitstring;
+  let pid_i = Hash_1Three(sk_TA, id_i, ri_TA) in
+  new ssk_V : SPrivateKey;
+  let spk_V = GenSPk(ssk_V) in
+  new sk_V : PrivateKey;
+  let pk_V = GenPk(sk_V) in
+  let x_i = Hash_2Four(id_i, sk_TA, ri_TA, ssk_V) in
+  let y_i = XORFun(x_i, RPWi) in
+  let TC_i = Hash_2Two(y_i, id_i) in
+  let V_i = Hash_2Two(TC_i, RPWi) in
+  let hpid_i = CuckooHash(pid_i) in
+  (* Insert the anonymous identity into the filter *)
+  insert CuckooFilter(hpid_i, pid_i);
+  (* Save the vehicle encryption and signature public key *)
+  insert VehicleList(hpid_i, pk_V, spk_V);
+
+  (pTA(sk_TA, ssk_TA)|(!pFN(pk_TA, spk_TA, sj, pk_FN, sk_FN))|(!pV(pk_TA, spk_TA, pid_i, y_i, V_i, pk_V, sk_V, spk_V, ssk_V, RPWi, bi, Fid)))
