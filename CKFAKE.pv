@@ -22,7 +22,7 @@ free SKTA_V : bitstring[private].
 (* FN params *)
 (* FN node ID *)
 free Fid : bitstring.
-(* FN节点签名私钥 *)
+(* The FN node signs the private key *)
 free ssk_FN : SPrivateKey.
 (* The FN node signs the private key *)
 free SKFN_TA : bitstring[private].
@@ -84,18 +84,23 @@ FalconVer2(FalconSign2(m1, m2, ssk), GenSPk(ssk)) = (m1, m2).
 reduc forall m1 : bitstring, m2 : bitstring;
 DXORFun(XORFun(m1, m2), m1) = m2.
 
+(* Define the individual lists and filters *)
 table FNList(bitstring, PublicKey, bitstring).
 table VehicleList(bitstring, PublicKey, SPublicKey).
 table CuckooFilter(bitstring, bitstring).
 
 
 (* Events *)
+(* The vehicle and FN sessions start and end *)
 event VFNstart(Participant).
 event VFNend(Participant).
+(* The FN and V sessions start and end *)
 event FNVstart(Participant).
 event FNVend(Participant).
+(* The FN and TA sessions start and end *)
 event FNTAstart(Participant).
 event FNTAend(Participant).
+(* The TA and FN sessions start and end *)
 event TAFNstart(Participant).
 event TAFNend(Participant).
 
@@ -111,6 +116,7 @@ query attacker(SKFN_TA).
 query attacker(SKFN_V).
 query attacker(SKTA_FN).
 query attacker(SKTA_V).
+(* Verify that each event occurred correctly *)
 query t : Participant;
 inj-event(VFNend(t)) ==> inj-event(VFNstart(t)).
 query t : Participant;
@@ -178,6 +184,7 @@ let (VTA_ : bitstring, rFN_ : bitstring, signV_x : bitstring, signRR_ : bitstrin
 let Ver3x = Hash_2Three(Y_, Z_, signRR_) in
 if (Ver3_ = Ver3x) then
 if (signV_ = signV_x) then
+(* The FN validates the TA's message successfully *)
 event TAFNend(FN);
 let (VTA : bitstring, rFN : bitstring) = FalconVer2(signRR_, spk_TA) in
 if (VTA = VTA_) then
@@ -198,6 +205,7 @@ out(FN_TA_public_net, RES2);
 (* Vehicle process *)
 let pV(pk_TA : PublicKey, spk_TA : SPublicKey, pid_i_ : bitstring, y_i_ : bitstring, V_i_ : bitstring, pk_V_ : PublicKey, sk_V_ : PrivateKey, spk_V_ : SPublicKey, ssk_V_ : SPrivateKey, RPWi : bitstring, bi : bitstring, Fid : bitstring) = 
 
+(* Update the relevant values after successful registration *)
 let x_i_ = DXORFun(y_i_, RPWi) in
 new rni_new : bitstring;
 let RPWi_new = Hash_1Four(id_i, pw_i, bi, rni_new) in
